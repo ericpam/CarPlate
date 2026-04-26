@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>EPD 產品開發預覽系統 V10.4</title>
+    <style>
+        /* 字體載入 */
+        @font-face { 
+            font-family: 'Plate-Main-New'; 
+            src: url('TW%20CarPlate%20New.ttf') format('truetype'); 
+        }
+        @font-face { 
+            font-family: 'Plate-Main-Old'; 
+            src: url('TW%20CarPlate%20Original.ttf') format('truetype'); 
+        }
+
+        body {
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            font-family: "Microsoft JhengHei", "微軟正黑體", sans-serif;
+            background-color: #f0f2f5;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* 工具欄 - 固定 400px */
+        .sidebar {
+            width: 400px;
+            min-width: 400px;
+            background-color: #ffffff;
+            padding: 40px 30px;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #eee;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+
+        .logo-text { font-size: 26px; font-weight: 900; color: #1a1a1a; margin-bottom: 5px; font-family: Arial, sans-serif; }
+        .logo-line { width: 100%; height: 3px; background-color: #1a1a1a; margin-bottom: 35px; }
+
+        .control-group { margin-bottom: 25px; width: 100%; }
+        label { display: block; margin-bottom: 12px; font-weight: 500; color: #666; font-size: 14px; }
+        
+        select, .styled-input {
+            width: 100%;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 12px;
+            font-size: 16px;
+            box-sizing: border-box;
+            outline: none;
+            background-color: #fcfcfc;
+        }
+
+        .bg-options { display: flex; gap: 12px; align-items: center; }
+        .bg-swatch {
+            width: 32px; height: 32px; border-radius: 50%;
+            border: 2px solid #eee; cursor: pointer; transition: 0.2s;
+        }
+        .bg-swatch-trans {
+            background-image: linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%);
+            background-size: 8px 8px; background-position: 0 0, 0 4px, 4px -4px, -4px 0px; background-color: #eee;
+        }
+        .bg-swatch.active { border-color: #007AFF; box-shadow: 0 0 5px rgba(0,122,255,0.5); }
+        .custom-color-picker { width: 36px; height: 36px; border: none; padding: 0; background: none; cursor: pointer; }
+
+        .plate-num-container { display: flex; align-items: center; gap: 12px; width: 100%; }
+        .plate-num-container input {
+            flex: 1; min-width: 0; text-align: center;
+            padding: 15px 5px; border: 1px solid #ddd; border-radius: 12px;
+            font-size: 20px; outline: none; box-sizing: border-box;
+        }
+        .plate-num-container span { font-weight: bold; font-size: 24px; color: #333; }
+
+        /* 預覽區 */
+        .preview-pane {
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+            transition: background 0.3s;
+        }
+
+        .checkerboard {
+            background-image: linear-gradient(45deg, #e5e5e5 25%, transparent 25%), linear-gradient(-45deg, #e5e5e5 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e5e5e5 75%), linear-gradient(-45deg, transparent 75%, #e5e5e5 75%);
+            background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; background-color: #ffffff;
+        }
+
+        .plate-display {
+            position: relative;
+            width: 700px; height: 350px; 
+            background-size: contain; background-repeat: no-repeat; background-position: center;
+            z-index: 1;
+        }
+
+        /* 文字圖層 */
+        .text-layer {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        #displayTop { 
+            font-weight: bold; /* 全語系強制加粗 */
+        }
+
+        #displayNum { left: 0; }
+
+        .footer-info { margin-top: auto; color: #ddd; font-size: 11px; line-height: 1.8; }
+        .input-hint { font-size: 11px; color: #bbb; margin-top: 8px; text-align: right; }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <div class="logo-text">EPD STUDIO</div>
+    <div class="logo-line"></div>
+    
+    <div class="control-group">
+        <label>預覽區域背景</label>
+        <div class="bg-options">
+            <div id="transBtn" class="bg-swatch bg-swatch-trans active" onclick="setTransparent(this)"></div>
+            <div class="bg-swatch" style="background-color: #FFFFFF;" onclick="setBg('#FFFFFF', this)"></div>
+            <div class="bg-swatch" style="background-color: #888888;" onclick="setBg('#888888', this)"></div>
+            <div class="bg-swatch" style="background-color: #000000;" onclick="setBg('#000000', this)"></div>
+            <input type="color" id="customBg" class="custom-color-picker" oninput="setCustomBg(this.value)">
+        </div>
+    </div>
+
+    <div class="control-group">
+        <label>車牌類型</label>
+        <select id="typeSelect">
+            <option value="mc_6">1. 機車六碼</option>
+            <option value="mc_7">2. 機車七碼</option>
+            <option value="yellow_6">3. 黃牌六碼</option>
+            <option value="yellow_7">4. 黃牌七碼</option>
+            <option value="red_4">5. 紅牌四碼</option>
+            <option value="red_5">6. 紅牌五碼</option>
+            <option value="red_7">7. 紅牌七碼</option>
+            <option value="car_6">8. 汽車六碼</option>
+            <option value="car_7">9. 汽車七碼</option>
+        </select>
+    </div>
+
+    <div class="control-group">
+        <label>車牌號碼</label>
+        <div class="plate-num-container">
+            <input type="text" id="partA">
+            <span>-</span>
+            <input type="text" id="partB">
+        </div>
+        <div id="numHint" class="input-hint">總字數限制：6 碼</div>
+    </div>
+
+    <div class="control-group">
+        <label>上方文字 (中5/英8)</label>
+        <input type="text" id="topInput" class="styled-input" placeholder="預設為空">
+        <div id="topHint" class="input-hint">剩餘字數：5</div>
+    </div>
+    
+    <div class="footer-info">
+        EPD 客製化商品開發專用 V10.4<br>
+        文字設定：上方英/中文字全 Bold
+    </div>
+</div>
+
+<div class="preview-pane checkerboard" id="previewPane">
+    <div id="plate" class="plate-display">
+        <div id="topBox" style="position:absolute; left:50%; transform:translateX(-50%); display:flex; justify-content:center; align-items:center; overflow:hidden; pointer-events:none; z-index:11;">
+            <div id="displayTop" class="text-layer"></div>
+        </div>
+        <div id="displayNum" class="text-layer"></div>
+    </div>
+</div>
+
+<script>
+    const configs = {
+        'mc_6':     { img: '1_BO.png', font: 'Original', color: '#000', limit: 6, defA: "AAA", defB: "888",  size: "232px", top: "25%",   left: "-2px", space: "-10px", topConf: { w: "265px", h: "73px", pos: "6%", max: 71, min: 49 } },
+        'mc_7':     { img: '2_BN.png', font: 'New',      color: '#000', limit: 7, defA: "ABC", defB: "1234", size: "199px", top: "21%",   left: "-2px", space: "-10px", topConf: { w: "265px", h: "73px", pos: "6%", max: 71, min: 49 } },
+        'yellow_6': { img: '3_YO.png', font: 'Original', color: '#000', limit: 6, defA: "AAA", defB: "888",  size: "232px", top: "25%",   left: "-2px", space: "-10px", topConf: { w: "265px", h: "73px", pos: "6%", max: 71, min: 49 } },
+        'yellow_7': { img: '4_YN.png', font: 'New',      color: '#000', limit: 7, defA: "ABC", defB: "1234", size: "199px", top: "21%",   left: "-2px", space: "-10px", topConf: { w: "265px", h: "73px", pos: "6%", max: 71, min: 49 } },
+        'red_4':    { img: '5_RO.png', font: 'Original', color: '#FFF', limit: 4, defA: "AA",  defB: "88",   size: "270px", top: "12.5%", left: "-5px", space: "-12px", topConf: { w: "265px", h: "73px", pos: "2%", max: 65, min: 49 } },
+        'red_5':    { img: '6_RN-I.png', font: 'New',    color: '#FFF', limit: 5, defA: "AA",  defB: "888",  size: "236px", top: "14%",   left: "3px",  space: "5px",   topConf: { w: "265px", h: "73px", pos: "6%", max: 71, min: 49 } },
+        'red_7':    { img: '7_RN.png', font: 'New',      color: '#FFF', limit: 7, defA: "ABC", defB: "1234", size: "199px", top: "21%",   left: "-2px", space: "-10px", topConf: { w: "265px", h: "73px", pos: "6%", max: 71, min: 49 } },
+        'car_6':    { img: '8_CO.png', font: 'Original', color: '#000', limit: 6, defA: "AA",  defB: "8888", size: "236px", top: "18.5%", left: "-4px", space: "-12px", topConf: { w: "265px", h: "73px", pos: "6%", max: 71, min: 49 } },
+        'car_7':    { img: '9_CN.png', font: 'New',      color: '#000', limit: 7, defA: "ABC", defB: "1234", size: "199px", top: "21%",   left: "-2px", space: "-10px", topConf: { w: "265px", h: "73px", pos: "6%", max: 71, min: 49 } }
+    };
+
+    const ui = {
+        type: document.getElementById('typeSelect'),
+        pA: document.getElementById('partA'),
+        pB: document.getElementById('partB'),
+        top: document.getElementById('topInput'),
+        numHint: document.getElementById('numHint'),
+        topHint: document.getElementById('topHint'),
+        plate: document.getElementById('plate'),
+        dT: document.getElementById('displayTop'),
+        dN: document.getElementById('displayNum'),
+        previewPane: document.getElementById('previewPane')
+    };
+
+    function setTransparent(element) {
+        ui.previewPane.classList.add('checkerboard'); ui.previewPane.style.backgroundColor = ""; setActiveSwatch(element);
+    }
+    function setBg(color, element) {
+        ui.previewPane.classList.remove('checkerboard'); ui.previewPane.style.backgroundColor = color; setActiveSwatch(element);
+    }
+    function setCustomBg(color) {
+        ui.previewPane.classList.remove('checkerboard'); ui.previewPane.style.backgroundColor = color; setActiveSwatch(null);
+    }
+    function setActiveSwatch(element) {
+        document.querySelectorAll('.bg-swatch').forEach(s => s.classList.remove('active')); if (element) element.classList.add('active');
+    }
+
+    function update(resetNum = false) {
+        const key = ui.type.value;
+        const cfg = configs[key];
+        
+        if (resetNum) { ui.pA.value = cfg.defA; ui.pB.value = cfg.defB; }
+
+        ui.pA.maxLength = Math.max(1, cfg.limit - ui.pB.value.length);
+        ui.pB.maxLength = Math.max(1, cfg.limit - ui.pA.value.length);
+        ui.numHint.innerText = `總字數限制：${cfg.limit} 碼`;
+
+        let topVal = ui.top.value;
+        const hasChinese = /[\u4E00-\u9FA5]/.test(topVal);
+        const maxLen = hasChinese ? 5 : 8;
+        ui.top.maxLength = maxLen;
+        ui.topHint.innerText = `剩餘字數：${maxLen - topVal.length}`;
+
+        // 縮放計算
+        let currentSize = cfg.topConf.max;
+        let currentSpace = 3;
+        if (topVal.length > 1) {
+            const step = (cfg.topConf.max - cfg.topConf.min) / (maxLen - 1);
+            currentSize = cfg.topConf.max - (step * (topVal.length - 1));
+            currentSpace = 3 + ((5 - 3) / (maxLen - 1) * (topVal.length - 1));
+        }
+
+        ui.plate.style.backgroundImage = `url('${cfg.img}')`;
+        
+        ui.dN.style.fontFamily = cfg.font === 'New' ? "'Plate-Main-New', sans-serif" : "'Plate-Main-Old', sans-serif";
+        ui.dN.style.fontSize = cfg.size;
+        ui.dN.style.top = cfg.top;
+        ui.dN.style.transform = `translateX(${cfg.left})`;
+        ui.dN.style.letterSpacing = cfg.space;
+        ui.dN.style.color = cfg.color;
+        ui.dN.innerText = `${ui.pA.value}-${ui.pB.value}`;
+
+        const tBox = document.getElementById('topBox');
+        tBox.style.width = cfg.topConf.w;
+        tBox.style.height = cfg.topConf.h;
+        tBox.style.top = cfg.topConf.pos;
+        
+        ui.dT.style.fontFamily = hasChinese ? "'Microsoft JhengHei', sans-serif" : "Arial, sans-serif";
+        ui.dT.style.fontWeight = "bold"; // 這裡改為全語系 Bold
+        ui.dT.style.fontSize = `${currentSize}px`;
+        ui.dT.style.letterSpacing = `${currentSpace}px`;
+        ui.dT.style.color = cfg.color;
+        ui.dT.innerText = topVal;
+    }
+
+    ui.type.addEventListener('change', () => update(true));
+    [ui.pA, ui.pB, ui.top].forEach(el => el.addEventListener('input', () => update(false)));
+
+    window.onload = () => update(true);
+</script>
+
+</body>
+</html>
