@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EPD CarPlate Preview V27</title>
+    <style>
+        /* 載入字體 */
+        @font-face { font-family: 'Plate-Main-New'; src: url('TW%20CarPlate%20New.ttf') format('truetype'); }
+        @font-face { font-family: 'Plate-Main-Old'; src: url('TW%20CarPlate%20Original.ttf') format('truetype'); }
+
+        body { 
+            font-family: "Microsoft JhengHei", sans-serif; 
+            display: flex; flex-direction: column; align-items: center; padding: 10px; 
+            background-color: #f0f2f5; margin: 0;
+            -webkit-text-size-adjust: none !important;
+        }
+
+        .container { 
+            background: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+            width: 95%; max-width: 720px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px;
+        }
+
+        h3 { margin: 0 0 5px 0; text-align: center; font-weight: bold; font-size: 22px; }
+
+        /* 預覽區域基礎設定 */
+        .preview-area { 
+            width: 100%; aspect-ratio: 2 / 1;
+            border: 1px solid #ddd; margin: 0 auto 10px auto; 
+            display: flex; justify-content: center; align-items: center; 
+            position: relative; overflow: hidden; border-radius: 4px;
+            background-color: transparent; /* 預設透明 */
+        }
+
+        /* 獨立的棋盤格類別 */
+        .checkerboard {
+            background-image: linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%, #eee 100%), 
+                              linear-gradient(45deg, #eee 25%, white 25%, white 75%, #eee 75%, #eee 100%);
+            background-size: 20px 20px; background-position: 0 0, 10px 10px;
+        }
+
+        .plate-display {
+            position: relative; width: 400px; height: 200px; background-size: contain; background-repeat: no-repeat;
+            background-position: center; transition: transform 0.1s ease-out; z-index: 1; flex-shrink: 0; transform-origin: center center;
+        }
+
+        .zoom-row-fixed { width: 100%; display: flex; justify-content: center; margin: 5px 0 15px 0; }
+        .zoom-controls-wrapper { display: flex; align-items: center; gap: 10px; width: 75%; }
+        .zoom-controls-wrapper input { flex: 1; cursor: pointer; height: 8px; accent-color: #007bff; }
+        .zoom-limit-text { font-size: 11px; font-weight: bold; color: #999; }
+        .current-zoom-blue { font-size: 15px; font-weight: bold; color: #007bff; min-width: 50px; text-align: right; }
+
+        .text-layer { 
+            position: absolute; width: 100%; text-align: center; z-index: 10; pointer-events: none; 
+            line-height: 1; display: flex; justify-content: center; align-items: center;
+        }
+
+        .form-group { margin-bottom: 10px; }
+        label { display: block; margin-bottom: 4px; font-size: 13px; font-weight: bold; color: #555; }
+        input, select { width: 100%; padding: 10px 12px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 14px; background-color: #fff; }
+        #partA, #partB { text-transform: uppercase; }
+
+        .bg-group { display: flex; gap: 10px; align-items: center; }
+        .bg-swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #eee; cursor: pointer; }
+        .bg-swatch-trans { background-image: linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%, #ccc 100%); background-size: 6px 6px; background-color: #eee; }
+        .bg-swatch.active { border-color: #007bff; }
+
+        .num-input-row { display: flex; align-items: center; gap: 10px; }
+        .num-input-row input { flex: 1; text-align: center; font-weight: bold; font-size: 16px; }
+        .num-input-row span { font-weight: bold; font-size: 20px; }
+        .hint-text { font-size: 11px; color: #aaa; text-align: right; margin-top: 3px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h3><b>EPD CarPlate Preview</b></h3>
+
+    <div class="preview-area checkerboard" id="previewPane">
+        <div id="plate" class="plate-display">
+            <div id="topBox" style="position:absolute; left:50%; transform:translateX(-50%); display:flex; justify-content:center; align-items:center; overflow:hidden; pointer-events:none; z-index:11;">
+                <div id="displayTop" class="text-layer"></div>
+            </div>
+            <div id="displayNum" class="text-layer"></div>
+        </div>
+    </div>
+
+    <div class="zoom-row-fixed">
+        <div class="zoom-controls-wrapper">
+            <span class="zoom-limit-text">0.1x</span>
+            <input type="range" id="zoomRange" min="0.1" max="2.0" step="0.01" value="1.0">
+            <span class="zoom-limit-text">2.0x</span>
+            <span class="current-zoom-blue" id="zoomText">1.00x</span>
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label>快速背景顏色</label>
+        <div class="bg-group">
+            <div id="transBtn" class="bg-swatch bg-swatch-trans active" onclick="setTransparent(this)"></div>
+            <div class="bg-swatch" style="background-color: #FFFFFF;" onclick="setBg('#FFFFFF', this)"></div>
+            <div class="bg-swatch" style="background-color: #888888;" onclick="setBg('#888888', this)"></div>
+            <div class="bg-swatch" style="background-color: #000000;" onclick="setBg('#000000', this)"></div>
+            <input type="color" id="customBg" style="width:30px; height:30px; border:none; padding:0; background:none; cursor:pointer;" oninput="setCustomBg(this.value)">
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label>車牌類型</label>
+        <select id="typeSelect">
+            <option value="mc_6">1. 機車六碼</option>
+            <option value="mc_7">2. 機車七碼</option>
+            <option value="yellow_6">3. 黃牌六碼</option>
+            <option value="yellow_7">4. 黃牌七碼</option>
+            <option value="red_4">5. 紅牌四碼</option>
+            <option value="red_5">6. 紅牌五碼</option>
+            <option value="red_7">7. 紅牌七碼</option>
+            <option value="car_6">8. 汽車六碼</option>
+            <option value="car_7">9. 汽車七碼</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>車牌號碼 (英數字分開填寫)</label>
+        <div class="num-input-row">
+            <input type="text" id="partA" placeholder="AAA">
+            <span>-</span>
+            <input type="text" id="partB" placeholder="8888">
+        </div>
+        <div id="numHint" class="hint-text">總限制：6 碼</div>
+    </div>
+
+    <div class="form-group">
+        <label id="topLabel">上方文字 (中5/英10)</label>
+        <input type="text" id="topInput" placeholder="預設為空">
+        <div id="topHint" class="hint-text">剩餘字數：5</div>
+    </div>
+</div>
+
+<script>
+    const configs = {
+        'mc_6':     { img: '1_BO.png', font: 'Original', color: '#000', limit: 6, defA: "AAA", defB: "888",  size: "131px", top: "30.4%", left: "0px",  space: "-5px", topBox: { w: "155px", pos: "4.3%", maxCh: 5, maxEn: 10 } },
+        'mc_7':     { img: '2_BN.png', font: 'New',      color: '#000', limit: 7, defA: "ABC", defB: "1234", size: "112px", top: "25.4%", left: "-1px", space: "-5px", topBox: { w: "155px", pos: "4.3%", maxCh: 5, maxEn: 10 } },
+        'yellow_6': { img: '3_YO.png', font: 'Original', color: '#000', limit: 6, defA: "AAA", defB: "888",  size: "131px", top: "30.4%", left: "0px",  space: "-5px", topBox: { w: "155px", pos: "4.3%", maxCh: 5, maxEn: 10 } },
+        'yellow_7': { img: '4_YN.png', font: 'New',      color: '#000', limit: 7, defA: "ABC", defB: "1234", size: "112px", top: "25.4%", left: "-1px", space: "-5px", topBox: { w: "155px", pos: "4.3%", maxCh: 5, maxEn: 10 } },
+        'red_4':    { img: '5_RO.png', font: 'Original', color: '#FFF', limit: 4, defA: "AA",  defB: "88",   size: "155px", top: "18.4%", left: "-4px", space: "-7px", topBox: { w: "122px", pos: "1.4%", maxCh: 3, maxEn: 8 } },
+        'red_5':    { img: '6_RN-I.png', font: 'New',    color: '#FFF', limit: 5, defA: "AA",  defB: "888",  size: "136px", top: "18.9%", left: "1px",  space: "2px",  topBox: { w: "155px", pos: "4.3%", maxCh: 5, maxEn: 10 } },
+        'red_7':    { img: '7_RN.png', font: 'New',      color: '#FFF', limit: 7, defA: "ABC", defB: "1234", size: "112px", top: "25.4%", left: "-1px", space: "-5px", topBox: { w: "155px", pos: "4.3%", maxCh: 5, maxEn: 10 } },
+        'car_6':    { img: '8_CO.png', font: 'Original', color: '#000', limit: 6, defA: "AA",  defB: "8888", size: "133px", top: "23.3%", left: "-2px", space: "-6px", topBox: { w: "155px", pos: "4.3%", maxCh: 5, maxEn: 10 } },
+        'car_7':    { img: '9_CN.png', font: 'New',      color: '#000', limit: 7, defA: "ABC", defB: "1234", size: "112px", top: "25.4%", left: "-1px", space: "-5px", topBox: { w: "155px", pos: "4.3%", maxCh: 5, maxEn: 10 } }
+    };
+
+    const ui = {
+        type: document.getElementById('typeSelect'), pA: document.getElementById('partA'), pB: document.getElementById('partB'),
+        top: document.getElementById('topInput'), numHint: document.getElementById('numHint'), topHint: document.getElementById('topHint'),
+        plate: document.getElementById('plate'), dT: document.getElementById('displayTop'), dN: document.getElementById('displayNum'),
+        pane: document.getElementById('previewPane'), zoom: document.getElementById('zoomRange'), zoomText: document.getElementById('zoomText'),
+        topLabel: document.getElementById('topLabel')
+    };
+
+    // 背景功能修正
+    function setTransparent(el) { 
+        ui.pane.classList.add('checkerboard'); 
+        ui.pane.style.backgroundColor = "transparent"; 
+        setActive(el); 
+    }
+    function setBg(c, el) { 
+        ui.pane.classList.remove('checkerboard'); 
+        ui.pane.style.backgroundColor = c; 
+        setActive(el); 
+    }
+    function setCustomBg(c) { 
+        ui.pane.classList.remove('checkerboard'); 
+        ui.pane.style.backgroundColor = c; 
+        setActive(null); 
+    }
+    function setActive(el) { 
+        document.querySelectorAll('.bg-swatch').forEach(s => s.classList.remove('active')); 
+        if(el) el.classList.add('active'); 
+    }
+
+    ui.zoom.addEventListener('input', () => { 
+        const v = parseFloat(ui.zoom.value).toFixed(2); ui.zoomText.innerText = v + "x"; ui.plate.style.transform = `scale(${v})`; 
+    });
+
+    function update(init = false) {
+        const cfg = configs[ui.type.value];
+        ui.pA.value = ui.pA.value.toUpperCase(); ui.pB.value = ui.pB.value.toUpperCase();
+        if (init) { ui.pA.value = cfg.defA; ui.pB.value = cfg.defB; }
+
+        ui.pA.maxLength = Math.max(1, cfg.limit - ui.pB.value.length);
+        ui.pB.maxLength = Math.max(1, cfg.limit - ui.pA.value.length);
+        ui.numHint.innerText = `總限制：${cfg.limit} 碼`;
+
+        let tVal = ui.top.value;
+        const hasCh = /[\u4E00-\u9FA5]/.test(tVal);
+        const maxLen = hasCh ? cfg.topBox.maxCh : cfg.topBox.maxEn;
+        ui.top.maxLength = maxLen;
+        ui.topLabel.innerText = `上方文字 (中${cfg.topBox.maxCh}/英${cfg.topBox.maxEn})`;
+        ui.topHint.innerText = `剩餘字數：${Math.max(0, maxLen - tVal.length)}`;
+
+        if (tVal.length > maxLen) { ui.top.value = tVal.substring(0, maxLen); tVal = ui.top.value; }
+
+        let fontSize, letterSpace;
+        if (hasCh) {
+            const step = tVal.length > 1 ? (tVal.length - 1) / (maxLen - 1) : 0;
+            fontSize = 41 - (41 - 30) * step;
+            letterSpace = 1 - (1 - 0) * step;
+        } else {
+            const step = tVal.length > 1 ? (tVal.length - 1) / (maxLen - 1) : 0;
+            fontSize = 38 - (38 - 28) * step;
+            letterSpace = 1 - (1 - (-2)) * step;
+        }
+
+        ui.plate.style.backgroundImage = `url('${cfg.img}')`;
+        ui.dN.style.fontFamily = cfg.font === 'New' ? "'Plate-Main-New', sans-serif" : "'Plate-Main-Old', sans-serif";
+        ui.dN.style.fontSize = cfg.size; ui.dN.style.top = cfg.top;
+        ui.dN.style.transform = `translateX(${cfg.left})`; ui.dN.style.letterSpacing = cfg.space;
+        ui.dN.style.color = cfg.color; ui.dN.innerText = `${ui.pA.value}-${ui.pB.value}`;
+
+        const tBox = document.getElementById('topBox');
+        tBox.style.width = cfg.topBox.w; tBox.style.height = "45px"; tBox.style.top = cfg.topBox.pos;
+        ui.dT.style.fontFamily = hasCh ? "'Microsoft JhengHei', sans-serif" : "Arial, sans-serif";
+        ui.dT.style.fontWeight = "bold"; ui.dT.style.fontSize = `${fontSize}px`;
+        ui.dT.style.letterSpacing = `${letterSpace}px`;
+        ui.dT.style.color = cfg.color; ui.dT.innerText = tVal;
+    }
+
+    ui.type.addEventListener('change', () => update(true));
+    [ui.pA, ui.pB, ui.top].forEach(el => el.addEventListener('input', () => update(false)));
+    
+    window.onload = () => {
+        const width = window.innerWidth;
+        if (width < 600) { let calc = 0.5 + (0.25 * (width - 320) / 280); ui.zoom.value = Math.min(0.75, Math.max(0.5, calc)); }
+        else { ui.zoom.value = 1.0; }
+        ui.zoomText.innerText = parseFloat(ui.zoom.value).toFixed(2) + "x";
+        update(true); ui.plate.style.transform = `scale(${ui.zoom.value})`; 
+    };
+</script>
+
+</body>
+</html>
